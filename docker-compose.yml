@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: youtube_db
+      POSTGRES_USER: youtube_user
+      POSTGRES_PASSWORD: youtube_password
+    ports:
+      - "5432:5432"
+
+  django:
+    build: ./backend
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://youtube_user:youtube_password@db:5432/youtube_db
+    depends_on:
+      - db
+
+  react:
+    build: ./frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - django
+
+volumes:
+  postgres_data:

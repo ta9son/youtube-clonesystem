@@ -1,0 +1,12 @@
+## django
+docker exec -it yotube-api-django-1 python manage.py makemigrations
+
+
+docker exec -it yotube-api-django-1 python manage.py migrate
+
+
+## ローカル volume確認
+docker volume ls
+
+## volume削除
+docker volume rm [ボリューム名]
