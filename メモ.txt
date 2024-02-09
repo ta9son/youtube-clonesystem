@@ -1,0 +1,173 @@
+## UDEMY
+https://www.udemy.com/course/youtube-react-hooks-django-restframework-api-web/learn/lecture/20317547#content
+
+### REACT
+
+reactのプロジェクトを作る時は
+
+npx create-react-app ./
+などとする時に先に、frontendディレクトリに
+dockerfileがあると競合して作れないので、先に上記プロジェクトを作ってからDockerfileを配置する。
+
+
+
+### DJANGO
+
+提案した構成とファイルは、Dockerを使用してDjangoバックエンドとReactフロントエンドを含むフルスタックアプリケーションを起動するための基本的な骨組みを提供します。ただし、実際にアプリケーションを起動する前に、いくつかの追加手順と準備が必要です。特に、Djangoプロジェクトがまだ作成されていない場合、以下の手順を実行する必要があります：
+
+Djangoプロジェクトの作成： Djangoプロジェクトがまだ存在しない場合、最初にプロジェクトを作成する必要があります。これは、Djangoがインストールされたローカル環境で実行することも、Dockerコンテナ内で実行することもできます。Dockerコンテナ内で実行する場合、backend/Dockerfileが設定された後、以下のコマンドを使用してDjangoプロジェクトとアプリケーションを作成できます：
+
+
+docker-compose run django django-admin startproject yourprojectname .
+このコマンドは、backendディレクトリ内に新しいDjangoプロジェクトを作成します。yourprojectnameをプロジェクトの名前に置き換えてください。
+
+Djangoの設定： データベース設定を含むDjangoの設定を更新する必要があります。settings.pyで、データベース接続情報を環境変数から読み込むように設定し、Docker Composeファイル内で定義したデータベース設定と一致させます。
+
+requirements.txtの作成： backend/requirements.txtファイルには、Djangoを含む必要なPythonパッケージをリストします。最低限、以下を含める必要があります：
+
+php
+Copy code
+Django>=3.0,<4.0
+djangorestframework
+psycopg2-binary
+Reactプロジェクトのセットアップ： Reactプロジェクトがまだ存在しない場合、create-react-appを使用してfrontendディレクトリ内に新しいプロジェクトを作成する必要があります。これは、通常の開発環境で行うことができます。
+
+これらの準備手順を完了した後、docker-compose upコマンドを使用して、全てのサービス（Djangoバックエンド、Reactフロントエンド、PostgreSQLデータベース）を起動できます。ただし、これらの手順はプロジェクトの初期セットアップにのみ必要であり、プロジェクトの構造が設定されていれば、docker-composeコマンドを使用して簡単に起動できるようになります。
+
+
+
+
+
+### postgresの設定
+
+特に、envに設定がなければdockerのdbをenvに設定があればそちらをって感じ
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('POSTGRES_DB', 'youtube_db'),
+        'USER': os.getenv('POSTGRES_USER', 'youtube_user'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'youtube_password'),
+        'HOST': os.getenv('DB_HOST', 'db'),  # Dockerコンテナのサービス名またはデフォルト値
+        'PORT': os.getenv('DB_PORT', '5432'),
+    }
+}
+
+
+
+
+docker-compose.ymlファイル内のdjangoサービスの環境変数設定を見ると、DATABASE_URLの値がプレースホルダーのままになっています（yourdbuser, yourdbpassword, yourdbname）。これを、dbサービスで設定した環境変数に合わせて更新する必要があります。
+
+修正後のdocker-compose.yml内のdjangoサービスの環境設定は以下のようになります：
+
+yaml
+Copy code
+django:
+  build: ./backend
+  command: python manage.py runserver 0.0.0.0:8000
+  volumes:
+    - ./backend:/app
+  ports:
+    - "8000:8000"
+  environment:
+    DATABASE_URL: postgresql://youtube_user:youtube_password@db:5432/youtube_db  <--------- ここ
+  depends_on:
+    - db
+この修正により、DATABASE_URLはPostgreSQLコンテナのdbサービスに設定されたユーザー名(youtube_user)、パスワード(youtube_password)、データベース名(youtube_db)を使用しています。これによって、DjangoアプリケーションはPostgreSQLデータベースに正しく接続できるようになります。
+
+また、Djangoのsettings.pyもデータベース設定を環境変数から読み込むようにしている場合は、その部分も正しい値を使用していることを確認してください。DATABASES設定がDATABASE_URL環境変数を使用していない場合は、適切に設定する必要があります。
+
+これらの修正後に、docker-compose up --buildを再実行して、変更を適用させてください。
+
+
+一旦volumeを削除してから再度docker-compose upをすると、新しい設定が反映される。
+
+ログを見ると、PostgreSQLデータベースの初期化をスキップしているため、youtube_userというユーザーが存在しないという問題が再び発生しています。これは、docker-compose down -vを使用しても、PostgreSQLデータベースのディレクトリが含まれるDockerボリュームが正しく削除されなかった可能性があります。
+
+問題を解決するために、以下の手順を試してみてください：
+
+明示的にDockerボリュームを削除する：
+
+先にdocker-compose downコマンドでコンテナを停止します。
+次に、docker volume lsを実行して現在存在するDockerボリュームのリストを取得します。
+PostgreSQLデータベースに関連するボリュームを特定し（例えば、docker-compose.ymlに定義されているpostgres_data）、docker volume rm [VOLUME_NAME]を使用して手動で削除します。
+Dockerコンテナとボリュームを一度に削除する：
+docker-compose downコマンドに--volumes（または-v）オプションを追加して、関連するボリュームも同時に削除します。
+
+css
+Copy code
+docker-compose down --volumes
+コンテナを再ビルドして起動する：
+ボリュームを削除した後、コンテナを再ビルドして起動します。
+
+css
+Copy code
+docker-compose up --build
+これらの手順により、PostgreSQLコンテナが初期化プロセスを新たに実行し、docker-compose.ymlで指定したPOSTGRES_USERとPOSTGRES_PASSWORD、POSTGRES_DBを使用してデータベースとユーザーを作成します。これにより、youtube_userでの認証問題が解決されるはずです。
+
+再度、docker-compose up --buildを実行した後に問題が解決しているか確認してください。もし問題が続く場合は、docker-compose.ymlファイルの設定や、環境変数が正しく設定されているかを再確認してみてください。
+
+
+
+
+
+
+#### settings.pyの設定
+アプリケーションの設定や
+ミドルウェアと
+# Reactからのリクエストを許可する設定( 今回はローカルからなので http://localhost:3000 )
+CORS_ORIGIN_WHITELIST = [
+    "http://localhost:3000"
+]
+
+--
+# デフォルトの認証の設定と方法を書いておく これをviewsなどで扱ってカスタマイズする
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ]    
+}
+
+動画や画像を保存するため直下に手動で media ディレクトリを作成し、settings.pyに以下の設定を追加します。
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'
+
+
+## カスタマイズしたユーザーモデルを使用する場合 (今回だとapiアプリケーションの中で定義したUserモデルを使用する場合)
+AUTH_USER_MODEL = 'api.User'
+
+
+
+#### 管理者ユーザー
+admin@admin.com
+Machida1724
+
+
+
+### serializers は手動で作成
+
+
+### modelviewset は router で作成 
+
+
+
+-----------------------
+###### REACT メモ
+
+npx create-react-app
+
+
+
+## matarial ui を設定
+
+npm install @material-ui/core
+npm install @material-ui/icons
+
+
+## react でアイコンが使えるやつ
+npm install react-icons
+
+## BEでjwt tokenを使えるようにしたので、クッキーに保存できるように設定
+npm install react-cookie
